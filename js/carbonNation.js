@@ -162,7 +162,7 @@ function gameLoop() {
       updateBubbleBomb();
     }
     // Handle collision, draw, and update each danger block
-    for (var i = dangerBlocks.length - 1; i >= 0; i--) {
+    for (i = dangerBlocks.length - 1; i >= 0; i--) {
       handleDangerBlockCollision(dangerBlocks[i]);
       drawDangerBlock(dangerBlocks[i], i);
       updateDangerBlock(dangerBlocks[i], i);
