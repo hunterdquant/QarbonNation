@@ -55,12 +55,15 @@ var qval = {
 };
 
 var state = {
-  nearestBubbleBomb: null,
-  nearestBubble: null,
-  nearestWall: null,
+  nearestBubbleBombX: null,
+  nearestBubbleBombY: null,
+  nearestBubbleX: null,
+  nearestBubbleY: null,
+  nearestWallX: null,
+  nearestWallX: null,
+  nearestSide: null,
   bubbleDensity: null,
-  wallDensity: null,
-  nearestSide: null
+  wallDensity: null
 };
 
 var iterationPerEpisode = 10000;
@@ -80,7 +83,7 @@ var SW = 7;
 var learningRate = 0.1;
 var discountFactor = 0.5;
 
-var fweights = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+var fweights = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 
 var exploreProb = 0.5;
 
@@ -169,6 +172,9 @@ function gameLoop() {
     trainingIteration++;
   } else {
     episode++;
+    if (episode%10 == 0) {
+      exploreProb /= 2;
+    }
     startNew();
   }
   // Update frame
@@ -192,13 +198,18 @@ function startNew() {
 }
 
 function qlearn() {
+  var bub = getNearestBubble();
+  var wall = getNearestWall();
   var state = {
-    nearestBubbleBomb: fNearestBubbleBomb(),
-    nearestBubble: fNearestBubble(),
-    nearestWall: fNearestWall(),
+    nearestBubbleBombX: fNearestBubbleBombX(),
+    nearestBubbleBombY: fNearestBubbleBombY(),
+    nearestBubbleX: fNearestBubbleX(bub),
+    nearestBubbleY: fNearestBubbleY(bub),
+    nearestWallX: fNearestWallX(wall),
+    nearestWallY: fNearestWallY(wall),
+    nearestSide: fNearestSide(),
     bubbleDensity: fBubbleDensity(),
-    wallDensity: fWallDensity(),
-    nearestSide: fNearestSide()
+    wallDensity: fWallDensity()
   };
   var choice = chooseAction(state);
   if (choice.state === null) {
@@ -213,30 +224,41 @@ function qlearn() {
     reward = -1;
   }
   var val = 0;
-  val += fweights[0]*choice.state.nearestBubbleBomb;
-  val += fweights[1]*choice.state.nearestBubble;
-  val += fweights[2]*choice.state.nearestWall;
-  val += fweights[3]*choice.state.bubbleDensity;
-  val += fweights[4]*choice.state.wallDensity;
-  val += fweights[5]*choice.state.nearestSide;
+  val += fweights[0]*choice.state.nearestBubbleBombX;
+  val += fweights[1]*choice.state.nearestBubbleBombY;
+  val += fweights[2]*choice.state.nearestBubbleX;
+  val += fweights[3]*choice.state.nearestBubbleY;
+  val += fweights[4]*choice.state.nearestWallX;
+  val += fweights[5]*choice.state.nearestWallY;
+  val += fweights[6]*choice.state.nearestSide;
+  val += fweights[7]*choice.state.bubbleDensity;
+  val += fweights[8]*choice.state.wallDensity;
   choice.val = val;
 
+  bub = getNearestBubble();
+  wall = getNearestWall();
   var newState = {
-    nearestBubbleBomb: fNearestBubbleBomb(),
-    nearestBubble: fNearestBubble(),
-    nearestWall: fNearestWall(),
+    nearestBubbleBombX: fNearestBubbleBombX(),
+    nearestBubbleBombY: fNearestBubbleBombY(),
+    nearestBubbleX: fNearestBubbleX(),
+    nearestBubbleY: fNearestBubbleY(),
+    nearestWallX: fNearestWallX(),
+    nearestWallY: fNearestWallY(),
+    nearestSide: fNearestSide(),
     bubbleDensity: fBubbleDensity(),
-    wallDensity: fWallDensity(),
-    nearestSide: fNearestSide()
+    wallDensity: fWallDensity()
   };
 
   var correction = getCorrection(newState, reward, val);
-  fweights[0] = fweights[0] + learningRate*correction*newState.nearestBubbleBomb;
-  fweights[1] = fweights[1] + learningRate*correction*newState.nearestBubble;
-  fweights[2] = fweights[2] + learningRate*correction*newState.nearestWall;
-  fweights[3] = fweights[3] + learningRate*correction*newState.bubbleDensity;
-  fweights[4] = fweights[4] + learningRate*correction*newState.wallDensity;
-  fweights[5] = fweights[5] + learningRate*correction*newState.nearestSide;
+  fweights[0] = fweights[0] + learningRate*correction*newState.nearestBubbleBombX;
+  fweights[1] = fweights[1] + learningRate*correction*newState.nearestBubbleBombY;
+  fweights[2] = fweights[2] + learningRate*correction*newState.nearestBubbleX;
+  fweights[3] = fweights[3] + learningRate*correction*newState.nearestBubbleY;
+  fweights[4] = fweights[4] + learningRate*correction*newState.nearestWallX;
+  fweights[5] = fweights[5] + learningRate*correction*newState.nearestWallY;
+  fweights[6] = fweights[6] + learningRate*correction*newState.nearestSide;
+  fweights[7] = fweights[7] + learningRate*correction*newState.bubbleDensity;
+  fweights[8] = fweights[8] + learningRate*correction*newState.wallDensity;
   if (fweights[0] === NaN) {
     console.log(fweights[0]);
   }
@@ -322,12 +344,15 @@ function takeAction(state, action) {
 
 function findQ(state, action) {
   for (var i = 0; i < qvals[action].length; i++) {
-    if (qvals[action][i].state.nearestBubbleBomb !== state.nearestBubbleBomb) continue;
-    if (qvals[action][i].state.nearestBubble !== state.nearestBubble) continue;
-    if (qvals[action][i].state.nearestWall !== state.nearestWall) continue;
-    if (qvals[action][i].state.nearestWall !== state.nearestWall) continue;
-    if (qvals[action][i].state.bubbleDensity !== state.bubbleDensity) continue;
+    if (qvals[action][i].state.nearestBubbleBombX !== state.nearestBubbleBombX) continue;
+    if (qvals[action][i].state.nearestBubbleBombY !== state.nearestBubbleBombY) continue;
+    if (qvals[action][i].state.nearestBubbleX !== state.nearestBubbleX) continue;
+    if (qvals[action][i].state.nearestBubbleY !== state.nearestBubbleY) continue;
+    if (qvals[action][i].state.nearestWallX !== state.nearestWallX) continue;
+    if (qvals[action][i].state.nearestWallY !== state.nearestWallY) continue;
     if (qvals[action][i].state.nearestSide !== state.nearestSide) continue;
+    if (qvals[action][i].state.bubbleDensity !== state.bubbleDensity) continue;
+    if (qvals[action][i].state.wallDensity !== state.wallDensity) continue;
     return qvals[action][i];
   }
   return null;
@@ -752,19 +777,34 @@ function checkGameTime() {
   }
 }
 
-function fNearestBubble() {
+function getNearestBubble() {
     var nearestBubbleDist = null;
+    var nearestBubble = null;
     for (i = bubbles.length - 1; i >= 0; i--) {
-      if (bubbleInRadius(bubbles[i])) {
-        var n = norm(flatz.x, bubbles[i].x, flatz.y, bubbles[i].y);
-        if (nearestBubbleDist === null ||  n < nearestBubbleDist) {
-          nearestBubbleDist = n;
-        }
+      var n = norm(flatz.x, bubbles[i].x, flatz.y, bubbles[i].y);
+      if (nearestBubbleDist === null ||  n < nearestBubbleDist) {
+        nearestBubbleDist = n;
+        nearestBubble = bubbles[i];
       }
     }
-    return (nearestBubbleDist !== null) ? Math.round(100*nearestBubbleDist)/100/4 : 1;
+    return nearestBubble;
 }
 
+function fNearestBubbleX(bubble) {
+  return (bubble !== null && bubble !== undefined) ? Math.round(100*(flatz.x-bubble.x))/100/4 : 1;
+}
+
+function fNearestBubbleY(bubble) {
+  return (bubble !== null && bubble !== undefined) ? Math.round(100*(flatz.y-bubble.y))/100/4 : 1;
+}
+
+function fNearestWallX(wall) {
+  return (wall !== null && wall !== undefined) ? Math.round(100*(flatz.x-wall.x))/100/4 : 1;
+}
+
+function fNearestWallY(wall) {
+  return (wall !== null && wall !== undefined) ? Math.round(100*(flatz.y-wall.y))/100/4 : 1;
+}
 
 function bubbleInRadius(bubble) {
   // Checks to see if Flatz has collided with the bomb
@@ -774,17 +814,17 @@ function bubbleInRadius(bubble) {
   return false;
 }
 
-function fNearestWall() {
+function getNearestWall() {
     var nearestWallDist = null;
+    var nearestWall = null;
     for (i = dangerBlocks.length - 1; i >= 0; i--) {
-      if (dangerBlockInRadius(dangerBlocks[i])) {
-        var n = norm(flatz.x, dangerBlocks[i].x, flatz.y, dangerBlocks[i].y);
-        if (nearestWallDist === null || n < nearestWallDist) {
-          nearestWallDist = n;
-        }
+      var n = norm(flatz.x, dangerBlocks[i].x, flatz.y, dangerBlocks[i].y);
+      if (nearestWallDist === null || n < nearestWallDist) {
+        nearestWallDist = n;
+        nearestWall = dangerBlocks[i];
       }
     }
-    return (nearestWallDist !== null) ? Math.round(100*nearestWallDist)/100/4 : 1;
+    return nearestWall;
 }
 
 function norm(x1, x2, y1, y2) {
@@ -798,8 +838,12 @@ function dangerBlockInRadius(dangerBlock) {
   return false;
 }
 
-function fNearestBubbleBomb() {
-    return (bubbleBomb !== null) ? Math.round(100*norm(flatz.x, bubbleBomb.x, flatz.y, bubbleBomb.y))/100/4 : 1;
+function fNearestBubbleBombX() {
+    return (bubbleBomb !== null) ? Math.round(100*(flatz.x-bubbleBomb.x))/100/4 : 1;
+}
+
+function fNearestBubbleBombY() {
+    return (bubbleBomb !== null) ? Math.round(100*(flatz.y-bubbleBomb.y))/100/4 : 1;
 }
 
 function fBubbleDensity() {
