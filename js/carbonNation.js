@@ -31,48 +31,71 @@ var bubbleBomb;
 var keyMapping;
 // HTML elements to display information
 var scoreText;
-var timeText;
-var highText;
+var trainText;
+var episodeText;
 var poppedText;
 // Current score
 var score;
-// Score multiplier
-var scoreMultiplier;
 // The base time value
-var time;
-// The locally saved high Score
+var train;
+
 var highScore;
 // The number of popped bubbles
 var popped;
-// Callback function that returns the remaining time
-var timeRemaining;
-// Boolean for playstate
-var playing;
-// Boolean for if the player has game overed.
-var gameOver;
+
 // Game music
 var song;
+
+var qvals = [[],[],[],[],[],[],[],[]];
+
+var qval = {
+  state: null,
+  action: null,
+  val: null
+};
+
+var state = {
+  nearestBubbleBomb: null,
+  nearestBubble: null,
+  nearestWall: null,
+  bubbleDensity: null,
+  wallDensity: null,
+  nearestSide: null
+};
+
+var iterationPerEpisode = 10000;
+var trainingIteration = 0;
+var episode = 1;
+
+// Too lazy to lookup js enums.
+var N = 0;
+var NE = 1;
+var S = 2;
+var SE = 3;
+var E = 4;
+var NW = 5;
+var W = 6;
+var SW = 7;
+
+var learningRate = 0.1;
+var discountFactor = 0.5;
+
+var fweights = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0];
+
+var exploreProb = 0.5;
 
 /* Initializes WebGL and globals */
 function init() {
 
   // Get reference to html elements
   scoreText = document.getElementById("score");
-  timeText = document.getElementById("time");
-  highText = document.getElementById("high");
+  trainText = document.getElementById("train");
+  episodeText = document.getElementById("episode");
   poppedText = document.getElementById("pop");
   // Set initial score and time values
   score = 0;
-  scoreMultiplier = 1;
-  time = 60000;
-  popped = 0;
 
-  if (localStorage.getItem("highScore") === null) {
-    highScore = 0;
-  } else {
-    highScore = localStorage.getItem("highScore");
-  }
-  highText.innerHTML = "High: " + Math.floor(highScore);
+  popped = 0;
 
   // Init webgl and specify clipspace.
   var canvas = document.getElementById("gl-canvas");
@@ -85,9 +108,8 @@ function init() {
 
   // Set initial play state
   playing = false;
-  gameOver = false;
 
-  song = new Audio("VoiceOverUnder.mp3");
+  song = new Audio("audio/VoiceOverUnder.mp3");
 
   // Initiale character
   initFlatz();
@@ -125,85 +147,198 @@ function gameLoop() {
   // Clear drawn elements
   gl.clear(gl.COLOR_BUFFER_BIT);
   // Execute game logic if playing
-  if (playing) {
-    // Update game timer
-    checkGameTime();
-    // Update displacement values based on key mappings
-    updateKeyInfo();
+  if (trainingIteration < iterationPerEpisode) {
 
     // Get random radius with min size
     var radius = Math.random() + 0.05;
 
     // If the radius is small enough generate a bubble
     if (radius < 0.25)
-      generateBubble(radius/2);
+      generateBubble(.1);
     // If the generated radiues is very small and there is not currently a bomb, generate a bomb.
     if (radius < 0.0515 && bubbleBomb === null)
       generateBubbleBomb();
-    if (radius < 0.07) {
+    if (radius < 0.06) {
       generateDangerBlock();
     }
-
-
+    qlearn();
     // Draw the character
     drawFlatz();
-
-    // Handle collision, draw, and update each bubble
-    for (var i = bubbles.length - 1; i >= 0; i--) {
-      handleBubbleCollision(bubbles[i]);
-      drawBubble(bubbles[i]);
-      updateBubble(bubbles[i], i);
-    }
-
-    // If the bomb exists handle its collision and draw it
-    if (bubbleBomb !== null) {
-      handleBubbleBombCollision();
-      drawBubbleBomb();
-      updateBubbleBomb();
-    }
-    // Handle collision, draw, and update each danger block
-    for (i = dangerBlocks.length - 1; i >= 0; i--) {
-      handleDangerBlockCollision(dangerBlocks[i]);
-      drawDangerBlock(dangerBlocks[i], i);
-      updateDangerBlock(dangerBlocks[i], i);
-    }
-    // Gameover happened this frame them reset the globals.
-    if (gameOver) {
-      resetGlobals();
-      song.pause();
-      localStorage.setItem("highScore", highScore);
-    }
-
+    uiUpdate();
     poppedText.innerHTML = "Popped: " + popped;
-  }
-  // If it's game over draw a red X
-  if (gameOver) {
-    drawX();
+    trainingIteration++;
+  } else {
+    episode++;
+    startNew();
   }
   // Update frame
   requestAnimFrame(gameLoop);
+}
+
+function uiUpdate() {
+  scoreText.innerHTML = "Score: " + score;
+  trainText.innerHTML = "Iter: " + trainingIteration;
+  episodeText.innerHTML = "Episode: " + episode;
+  poppedText.innerHTML = "Popped: " + popped;
 }
 
 /* Resets game upon the press of a button */
 function startNew() {
   resetGlobals();
   scoreText.innerHTML = "Score: 0";
-  timeText.innerHTML = "Time: 0";
-  popped = 0;
-  gameOver = false;
+  trainText.innerHTML = "Iter: 0";
   song.currentTime = 0;
   song.play();
-  // Reset timer
-  timeRemaining = timer(time);
-  // Change play state
-  playing = true;
+}
+
+function qlearn() {
+  var state = {
+    nearestBubbleBomb: fNearestBubbleBomb(),
+    nearestBubble: fNearestBubble(),
+    nearestWall: fNearestWall(),
+    bubbleDensity: fBubbleDensity(),
+    wallDensity: fWallDensity(),
+    nearestSide: fNearestSide()
+  };
+  var choice = chooseAction(state);
+  if (choice.state === null) {
+    choice.state = state;
+    qvals[choice.action].push(choice);
+  }
+  
+  var reward = takeAction(choice.state, choice.action);
+  if (reward > 1) {
+    reward = 1;
+  } else if (reward < -1) {
+    reward = -1;
+  }
+  var val = 0;
+  val += fweights[0]*choice.state.nearestBubbleBomb;
+  val += fweights[1]*choice.state.nearestBubble;
+  val += fweights[2]*choice.state.nearestWall;
+  val += fweights[3]*choice.state.bubbleDensity;
+  val += fweights[4]*choice.state.wallDensity;
+  val += fweights[5]*choice.state.nearestSide;
+  choice.val = val;
+
+  var newState = {
+    nearestBubbleBomb: fNearestBubbleBomb(),
+    nearestBubble: fNearestBubble(),
+    nearestWall: fNearestWall(),
+    bubbleDensity: fBubbleDensity(),
+    wallDensity: fWallDensity(),
+    nearestSide: fNearestSide()
+  };
+
+  var correction = getCorrection(newState, reward, val);
+  fweights[0] = fweights[0] + learningRate*correction*newState.nearestBubbleBomb;
+  fweights[1] = fweights[1] + learningRate*correction*newState.nearestBubble;
+  fweights[2] = fweights[2] + learningRate*correction*newState.nearestWall;
+  fweights[3] = fweights[3] + learningRate*correction*newState.bubbleDensity;
+  fweights[4] = fweights[4] + learningRate*correction*newState.wallDensity;
+  fweights[5] = fweights[5] + learningRate*correction*newState.nearestSide;
+  if (fweights[0] === NaN) {
+    console.log(fweights[0]);
+  }
+}
+
+function getCorrection(state, reward, val) {
+  var qmax = 0;
+  var qval = null;
+  for (var i = 0; i < 8; i++) {
+    tmpq = findQ(state, i);
+    if (tmpq !== null && tmpq.val !== null && tmpq.val > qmax) {
+      qval = tmpq;
+      qmax = qval.val;
+    }
+  }
+  if (qval !== null && qval.val !== null) {
+    return reward + discountFactor*qval.val - val;
+  }
+  return reward - val;
+}
+
+function chooseAction(state, action) {
+  var qval = null;
+  var rand = Math.random();
+  if (rand < exploreProb) {
+    return {
+      state: null,
+      action: getRandomAction()
+    };
+  } else {
+    var qmax = 0;
+    for (var i = 0; i < 8; i++) {
+      tmpq = findQ(state, i);
+      if (tmpq !== null && tmpq.val !== null && tmpq.val > qmax) {
+        qval = tmpq;
+        qmax = qval.val;
+      }
+    }
+    if (qval !== null) {
+      return qval;
+    }
+  }
+  return {
+    state: null,
+    action: getRandomAction()
+  };
+}
+
+function getRandomAction() {
+  return Math.floor(Math.random()*8);
+}
+
+function setExploreProb() {
+  var tmp = document.getElementById("exploreProb");
+  exploreProb = parseFloat(tmp.value);
+}
+
+function takeAction(state, action) {
+    var reward = 0;
+    // Update displacement values based on key mappings
+    updateKeyInfo(action);
+    // Handle collision, draw, and update each bubble
+    for (var i = bubbles.length - 1; i >= 0; i--) {
+      reward += handleBubbleCollision(bubbles[i]);
+      drawBubble(bubbles[i]);
+      updateBubble(bubbles[i], i);
+    }
+
+    // If the bomb exists handle its collision and draw it
+    if (bubbleBomb !== null) {
+      reward += handleBubbleBombCollision();
+      drawBubbleBomb();
+      updateBubbleBomb();
+    }
+    // Handle collision, draw, and update each danger block
+    for (i = dangerBlocks.length - 1; i >= 0; i--) {
+      reward += handleDangerBlockCollision(dangerBlocks[i]);
+      drawDangerBlock(dangerBlocks[i], i);
+      updateDangerBlock(dangerBlocks[i], i);
+    }
+    return reward;
+}
+
+function findQ(state, action) {
+  for (var i = 0; i < qvals[action].length; i++) {
+    if (qvals[action][i].state.nearestBubbleBomb !== state.nearestBubbleBomb) continue;
+    if (qvals[action][i].state.nearestBubble !== state.nearestBubble) continue;
+    if (qvals[action][i].state.nearestWall !== state.nearestWall) continue;
+    if (qvals[action][i].state.nearestWall !== state.nearestWall) continue;
+    if (qvals[action][i].state.bubbleDensity !== state.bubbleDensity) continue;
+    if (qvals[action][i].state.nearestSide !== state.nearestSide) continue;
+    return qvals[action][i];
+  }
+  return null;
 }
 
 /* resets globals on lose and game start */
 function resetGlobals() {
   // Reset all globals
   score = 0;
-  time = 60000;
+  trainingIteration = 0;
+  popped = 0;
   initFlatz();
   bubbles = [];
   dangerBlocks = [];
@@ -219,24 +354,26 @@ function handleBubbleCollision(bubble) {
     updateScore(bubble);
     // Flad the bubble as popped
     bubble.popped = true;
-    var pop = new Audio("Punch_HD-Mark_DiAngelo-1718986183.mp3");
+    var pop = new Audio("audio/Punch_HD-Mark_DiAngelo-1718986183.mp3");
     pop.volume = 10*bubble.getArea();
     pop.play();
-
     popped++;
+    return 0.1;
   }
+
   // Check if the bubble is in the blast radius of the bomb if one is exploding
   if (bubbleBomb !== null && bubbleBomb.exploding && !bubble.popped) {
     if (Math.pow(bubble.x - bubbleBomb.x, 2) + Math.pow(bubble.y - bubbleBomb.y, 2) <= Math.pow(bubbleBomb.scale*bubbleBomb.radius, 2)) {
       updateScore(bubble);
       bubble.popped = true;
-      var pop = new Audio("Punch_HD-Mark_DiAngelo-1718986183.mp3");
+      var pop = new Audio("audio/Punch_HD-Mark_DiAngelo-1718986183.mp3");
       pop.volume = 10*bubble.getArea();
       pop.play();
-
       popped++;
+      return 0.1;
     }
   }
+  return 0;
 }
 
 /* Checks to see if Flatz has collided with the bomb */
@@ -245,27 +382,26 @@ function handleBubbleBombCollision() {
   if (!bubbleBomb.exploding && Math.abs(bubbleBomb.x - flatz.x) <= bubbleBomb.scale*bubbleBomb.radius + 0.05 && Math.abs(bubbleBomb.y - flatz.y) <= bubbleBomb.scale*bubbleBomb.radius + 0.016) {
     // Mark the bomb as exploding
     bubbleBomb.exploding = true;
-    new Audio("Beep 2-SoundBible.com-1798581971.mp3").play();
+    new Audio("audio/Beep 2-SoundBible.com-1798581971.mp3").play();
+    return 3;
   }
+  return 0;
 }
 
 function handleDangerBlockCollision(dangerBlock) {
   if (Math.abs(dangerBlock.x - flatz.x) < .125 && Math.abs(dangerBlock.y - flatz.y) < .225) {
-    gameOver = true;
-    playing = false;
+    score -= 1000;
+    dangerBlock.hit = true;
+    return -2;
   }
+  return 0;
 }
+
 
 /* Updates the score with the area of the passed bubble */
 function updateScore(bubble) {
   // Add the value of the popped bubble to the score
-  score += (scoreMultiplier*1000*bubble.getArea());
-  // Update the HTML
-  scoreText.innerHTML = "Score: " + Math.floor(score);
-  if (score > highScore) {
-    highScore = score;
-    highText.innerHTML = "High: " + Math.floor(highScore);
-  }
+  score += Math.trunc(1000*bubble.getArea());
 }
 
 /* Initializes flatz object */
@@ -349,7 +485,8 @@ function generateDangerBlock() {
     vertices: v,
     x: direction*1.25,
     y: (Math.random() > .5) ? -1*Math.random() : Math.random(),
-    step: direction*0.015
+    step: direction*0.015,
+    hit: false
   };
 
   dangerBlocks.push(dangerBlock);
@@ -392,6 +529,11 @@ function updateBubbleBomb() {
 function updateDangerBlock(dangerBlock, dangerBlockIndex) {
   // If the bubble has reached the top of the screen remove it
   if (dangerBlock.x > 1.25 || dangerBlock.x < -1.25) {
+    dangerBlocks.splice(dangerBlockIndex, 1);
+    return;
+  }
+
+  if (dangerBlock.hit) {
     dangerBlocks.splice(dangerBlockIndex, 1);
     return;
   }
@@ -507,38 +649,36 @@ function drawX() {
 }
 
 /* Changes position and rotation of Flatz based on the state of key presses */
-function updateKeyInfo() {
+function updateKeyInfo(action) {
 
   // Change pos and set rotation
-  if (keyMapping[38] || keyMapping[87]) {
+  if (keyMapping[38] || keyMapping[87] || action == N || action == NE || action == NW) {
     flatz.theta = 0;
     if (flatz.y < 1)
       flatz.y += 0.015;
-  }
-  if (keyMapping[40] || keyMapping[83]) {
+  } else if (keyMapping[40] || keyMapping[83] || action == S || action == SE || action == SW) {
     flatz.theta = Math.PI;
     if (flatz.y > -1)
       flatz.y -= 0.015;
   }
-  if (keyMapping[39] || keyMapping[68]) {
+  if (keyMapping[39] || keyMapping[68] || action == E || action == NE || action == SE) {
     flatz.theta = Math.PI/2;
     if (flatz.x < 1)
       flatz.x += 0.015;
-  }
-  if (keyMapping[37] || keyMapping[65]) {
+  } else if (keyMapping[37] || keyMapping[65] || action == W || action == NW || action == SW) {
     flatz.theta = -Math.PI/2;
     if (flatz.x > -1)
       flatz.x -= 0.015;
   }
 
   // Angles for multiple key presses
-  if ((keyMapping[38] || keyMapping[87]) && (keyMapping[39] || keyMapping[68]))
+  if ((keyMapping[38] || keyMapping[87]) && (keyMapping[39] || keyMapping[68]) || action == NE)
     flatz.theta = Math.PI/4;
-  if ((keyMapping[38] || keyMapping[87]) && (keyMapping[37] || keyMapping[65]))
+  if ((keyMapping[38] || keyMapping[87]) && (keyMapping[37] || keyMapping[65]) || action == NW)
     flatz.theta = -Math.PI/4;
-  if ((keyMapping[40] || keyMapping[83]) && (keyMapping[39] || keyMapping[68]))
+  if ((keyMapping[40] || keyMapping[83]) && (keyMapping[39] || keyMapping[68]) || action == SE)
     flatz.theta = 3*Math.PI/4;
-  if ((keyMapping[40] || keyMapping[83]) && (keyMapping[37] || keyMapping[65]))
+  if ((keyMapping[40] || keyMapping[83]) && (keyMapping[37] || keyMapping[65]) || action == SW)
     flatz.theta = -3*Math.PI/4;
 }
 
@@ -603,12 +743,85 @@ function timer(time) {
 
 /* Updates HTML with time id and changes game state if there is no time remaining */
 function checkGameTime() {
-  var timeLeft = timeRemaining();
-  scoreMultiplier = 1 + Math.floor(time/1000 - timeLeft/1000);
+  var timeLeft = timeRemaining;
   timeText.innerHTML = "Time: " + timeLeft/1000;
   if (timeLeft <= 0) {
     timeText.innerHTML = "Time: " + 0;
     resetGlobals();
     playing = false;
   }
+}
+
+function fNearestBubble() {
+    var nearestBubbleDist = null;
+    for (i = bubbles.length - 1; i >= 0; i--) {
+      if (bubbleInRadius(bubbles[i])) {
+        var n = norm(flatz.x, bubbles[i].x, flatz.y, bubbles[i].y);
+        if (nearestBubbleDist === null ||  n < nearestBubbleDist) {
+          nearestBubbleDist = n;
+        }
+      }
+    }
+    return (nearestBubbleDist !== null) ? Math.round(100*nearestBubbleDist)/100/4 : 1;
+}
+
+
+function bubbleInRadius(bubble) {
+  // Checks to see if Flatz has collided with the bomb
+  if (!bubble.popped && Math.abs(bubble.x - flatz.x) <= bubble.radius + 0.2 + 0.05 && Math.abs(bubble.y - flatz.y) <= bubble.radius + 0.2 + 0.016) {
+    return true;
+  }
+  return false;
+}
+
+function fNearestWall() {
+    var nearestWallDist = null;
+    for (i = dangerBlocks.length - 1; i >= 0; i--) {
+      if (dangerBlockInRadius(dangerBlocks[i])) {
+        var n = norm(flatz.x, dangerBlocks[i].x, flatz.y, dangerBlocks[i].y);
+        if (nearestWallDist === null || n < nearestWallDist) {
+          nearestWallDist = n;
+        }
+      }
+    }
+    return (nearestWallDist !== null) ? Math.round(100*nearestWallDist)/100/4 : 1;
+}
+
+function norm(x1, x2, y1, y2) {
+  return Math.abs(Math.exp(x1 - x2, 2) + Math.exp(y1 - y2, 2));
+}
+
+function dangerBlockInRadius(dangerBlock) {
+  if (Math.abs(dangerBlock.x - flatz.x) < 0.4 + .125 && Math.abs(dangerBlock.y +  - flatz.y) < 0.4 + .225) {
+    return true;
+  }
+  return false;
+}
+
+function fNearestBubbleBomb() {
+    return (bubbleBomb !== null) ? Math.round(100*norm(flatz.x, bubbleBomb.x, flatz.y, bubbleBomb.y))/100/4 : 1;
+}
+
+function fBubbleDensity() {
+    var bubbleCount = 0;
+    for (var i = bubbles.length - 1; i >= 0; i--) {
+      if (bubbleInRadius(bubbles[i])) {
+        bubbleCount++;
+      }
+    }
+    return bubbleCount/100;
+}
+
+function fWallDensity() {
+    var wallCount = 0;
+    for (i = dangerBlocks.length - 1; i >= 0; i--) {
+      if (dangerBlockInRadius(dangerBlocks[i])) {
+        wallCount++;
+      }
+    }
+    return wallCount/10;
+}
+
+function fNearestSide() {
+  return (100*Math.min(Math.abs(flatz.x - -1), Math.abs(flatz.x - 1)))/100;
 }
