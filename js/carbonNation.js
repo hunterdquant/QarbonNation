@@ -46,7 +46,7 @@ var popped;
 // Game music
 var song;
 
-var qvals = [[],[],[],[],[],[],[],[]];
+var qvals = [[],[],[],[],[],[],[],[],[]];
 
 var qval = {
   state: null,
@@ -79,6 +79,7 @@ var E = 4;
 var NW = 5;
 var W = 6;
 var SW = 7;
+var WAIT = 8;
 
 var learningRate = 0.1;
 var discountFactor = 0.5;
@@ -259,15 +260,12 @@ function qlearn() {
   fweights[6] = fweights[6] + learningRate*correction*newState.nearestSide;
   fweights[7] = fweights[7] + learningRate*correction*newState.bubbleDensity;
   fweights[8] = fweights[8] + learningRate*correction*newState.wallDensity;
-  if (fweights[0] === NaN) {
-    console.log(fweights[0]);
-  }
 }
 
 function getCorrection(state, reward, val) {
   var qmax = 0;
   var qval = null;
-  for (var i = 0; i < 8; i++) {
+  for (var i = 0; i < 9; i++) {
     tmpq = findQ(state, i);
     if (tmpq !== null && tmpq.val !== null && tmpq.val > qmax) {
       qval = tmpq;
@@ -290,7 +288,7 @@ function chooseAction(state, action) {
     };
   } else {
     var qmax = 0;
-    for (var i = 0; i < 8; i++) {
+    for (var i = 0; i < 9; i++) {
       tmpq = findQ(state, i);
       if (tmpq !== null && tmpq.val !== null && tmpq.val > qmax) {
         qval = tmpq;
@@ -308,7 +306,7 @@ function chooseAction(state, action) {
 }
 
 function getRandomAction() {
-  return Math.floor(Math.random()*8);
+  return Math.floor(Math.random()*9);
 }
 
 function setExploreProb() {
@@ -417,7 +415,7 @@ function handleDangerBlockCollision(dangerBlock) {
   if (Math.abs(dangerBlock.x - flatz.x) < .125 && Math.abs(dangerBlock.y - flatz.y) < .225) {
     score -= 1000;
     dangerBlock.hit = true;
-    return -2;
+    return -10;
   }
   return 0;
 }
@@ -675,6 +673,9 @@ function drawX() {
 
 /* Changes position and rotation of Flatz based on the state of key presses */
 function updateKeyInfo(action) {
+  if (action === WAIT) {
+    return;
+  }
 
   // Change pos and set rotation
   if (keyMapping[38] || keyMapping[87] || action == N || action == NE || action == NW) {
