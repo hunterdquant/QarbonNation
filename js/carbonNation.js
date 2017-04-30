@@ -18,6 +18,11 @@
   https://creativecommons.org/licenses/sampling+/1.0/
 */
 
+// For 9 features: 1,200,000,000 states
+// For 8 degree version: 5,000,000 states.
+// For 4 degree version with restricted movement: 64,000 states.
+
+
 /* Define globals */
 var gl;
 var shaderProgram;
@@ -48,8 +53,8 @@ var song;
 
 // Index is the action taken.
 // Linear search through action rather than all state.
-var qvals = [[],[],[],[],[],[],[],[],[]];
-
+var qvals = [[],[],[],[],[],[],[],[]];
+var actionCount = 8;
 var qval = {
   state: null,
   action: null,
@@ -57,16 +62,24 @@ var qval = {
 };
 
 var state = {
-  nearestBubbleBombX: null,
-  nearestBubbleBombY: null,
-  nearestBubbleX: null,
-  nearestBubbleY: null,
-  nearestWallX: null,
-  nearestWallX: null,
+  nearestBubbleBombDegree: null,
+  nearestBubbleDegree: null,
+  nearestWallDegree: null,
   nearestSide: null,
-  bubbleDensity: null,
-  wallDensity: null
+  bubbleDensity: null
 };
+
+// var state = {
+//   nearestBubbleBombX: null,
+//   nearestBubbleBombY: null,
+//   nearestBubbleX: null,
+//   nearestBubbleY: null,
+//   nearestWallX: null,
+//   nearestWallX: null,
+//   nearestSide: null,
+//   bubbleDensity: null,
+//   wallDensity: null
+// };
 
 var bubbleRadius = 0.2;
 var wallRadius = 0.4;
@@ -89,7 +102,7 @@ var WAIT = 8;
 var learningRate = 0.1;
 var discountFactor = 0.5;
 
-var fweights = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+var fweights = [0.0, 0.0, 0.0, 0.0, 0.0];
 
 var exploreProb = 0.5;
 
@@ -207,15 +220,11 @@ function qlearn() {
   var bub = getNearestBubble();
   var wall = getNearestWall();
   var state = {
-    nearestBubbleBombX: fNearestBubbleBombX(),
-    nearestBubbleBombY: fNearestBubbleBombY(),
-    nearestBubbleX: fNearestBubbleX(bub),
-    nearestBubbleY: fNearestBubbleY(bub),
-    nearestWallX: fNearestWallX(wall),
-    nearestWallY: fNearestWallY(wall),
+    nearestBubbleBombDegree: fNearestBubbleBombDegree(),
+    nearestBubbleDegree: fNearestBubbleDegree(bub),
+    nearestWallDegree: fNearestWallDegree(wall),
     nearestSide: fNearestSide(),
-    bubbleDensity: fBubbleDensity(),
-    wallDensity: fWallDensity()
+    bubbleDensity: fBubbleDensity()
   };
   var choice = chooseAction(state);
   if (choice.state === null) {
@@ -225,47 +234,35 @@ function qlearn() {
   
   var reward = takeAction(choice.state, choice.action);
   var val = 0;
-  val += fweights[0]*choice.state.nearestBubbleBombX;
-  val += fweights[1]*choice.state.nearestBubbleBombY;
-  val += fweights[2]*choice.state.nearestBubbleX;
-  val += fweights[3]*choice.state.nearestBubbleY;
-  val += fweights[4]*choice.state.nearestWallX;
-  val += fweights[5]*choice.state.nearestWallY;
-  val += fweights[6]*choice.state.nearestSide;
-  val += fweights[7]*choice.state.bubbleDensity;
-  val += fweights[8]*choice.state.wallDensity;
+  val += fweights[0]*choice.state.nearestBubbleBombDegree;
+  val += fweights[1]*choice.state.nearestBubbleDegree;
+  val += fweights[2]*choice.state.nearestWallDegree;
+  val += fweights[3]*choice.state.nearestSide;
+  val += fweights[4]*choice.state.bubbleDensity;
   choice.val = val;
 
   bub = getNearestBubble();
   wall = getNearestWall();
   var newState = {
-    nearestBubbleBombX: fNearestBubbleBombX(),
-    nearestBubbleBombY: fNearestBubbleBombY(),
-    nearestBubbleX: fNearestBubbleX(),
-    nearestBubbleY: fNearestBubbleY(),
-    nearestWallX: fNearestWallX(),
-    nearestWallY: fNearestWallY(),
+    nearestBubbleBombDegree: fNearestBubbleBombDegree(),
+    nearestBubbleDegree: fNearestBubbleDegree(bub),
+    nearestWallDegree: fNearestWallDegree(wall),
     nearestSide: fNearestSide(),
-    bubbleDensity: fBubbleDensity(),
-    wallDensity: fWallDensity()
+    bubbleDensity: fBubbleDensity()
   };
 
   var correction = getCorrection(newState, reward, val);
-  fweights[0] = fweights[0] + learningRate*correction*newState.nearestBubbleBombX;
-  fweights[1] = fweights[1] + learningRate*correction*newState.nearestBubbleBombY;
-  fweights[2] = fweights[2] + learningRate*correction*newState.nearestBubbleX;
-  fweights[3] = fweights[3] + learningRate*correction*newState.nearestBubbleY;
-  fweights[4] = fweights[4] + learningRate*correction*newState.nearestWallX;
-  fweights[5] = fweights[5] + learningRate*correction*newState.nearestWallY;
-  fweights[6] = fweights[6] + learningRate*correction*newState.nearestSide;
-  fweights[7] = fweights[7] + learningRate*correction*newState.bubbleDensity;
-  fweights[8] = fweights[8] + learningRate*correction*newState.wallDensity;
+  fweights[0] = fweights[0] + learningRate*correction*newState.nearestBubbleBombDegree;
+  fweights[1] = fweights[1] + learningRate*correction*newState.nearestBubbleDegree;
+  fweights[2] = fweights[2] + learningRate*correction*newState.nearestWallDegree;
+  fweights[3] = fweights[3] + learningRate*correction*newState.nearestSide;
+  fweights[4] = fweights[4] + learningRate*correction*newState.bubbleDensity;
 }
 
 function getCorrection(state, reward, val) {
   var qmax = 0;
   var qval = null;
-  for (var i = 0; i < 9; i++) {
+  for (var i = 0; i < actionCount; i++) {
     tmpq = findQ(state, i);
     if (tmpq !== null && tmpq.val !== null && tmpq.val > qmax) {
       qval = tmpq;
@@ -289,7 +286,7 @@ function chooseAction(state, action) {
     };
   } else {
     var qmax = 0;
-    for (var i = 0; i < 9; i++) {
+    for (var i = 0; i < actionCount; i++) {
       tmpq = findQ(state, i);
       if (tmpq !== null && tmpq.val !== null && tmpq.val > qmax) {
         qval = tmpq;
@@ -308,7 +305,7 @@ function chooseAction(state, action) {
 }
 
 function getRandomAction() {
-  return Math.floor(Math.random()*9);
+  return Math.floor(Math.random()*actionCount);
 }
 
 function setExploreProb() {
@@ -344,15 +341,11 @@ function takeAction(state, action) {
 
 function findQ(state, action) {
   for (var i = 0; i < qvals[action].length; i++) {
-    if (qvals[action][i].state.nearestBubbleBombX !== state.nearestBubbleBombX) continue;
-    if (qvals[action][i].state.nearestBubbleBombY !== state.nearestBubbleBombY) continue;
-    if (qvals[action][i].state.nearestBubbleX !== state.nearestBubbleX) continue;
-    if (qvals[action][i].state.nearestBubbleY !== state.nearestBubbleY) continue;
-    if (qvals[action][i].state.nearestWallX !== state.nearestWallX) continue;
-    if (qvals[action][i].state.nearestWallY !== state.nearestWallY) continue;
+    if (qvals[action][i].state.nearestBubbleBombDegree !== state.nearestBubbleBombDegree) continue;
+    if (qvals[action][i].state.nearestBubbleDegree !== state.nearestBubbleDegree) continue;
+    if (qvals[action][i].state.nearestWallDegree !== state.nearestWallDegree) continue;
     if (qvals[action][i].state.nearestSide !== state.nearestSide) continue;
     if (qvals[action][i].state.bubbleDensity !== state.bubbleDensity) continue;
-    if (qvals[action][i].state.wallDensity !== state.wallDensity) continue;
     return qvals[action][i];
   }
   return null;
@@ -675,9 +668,6 @@ function drawX() {
 
 /* Changes position and rotation of Flatz based on the state of key presses */
 function updateKeyInfo(action) {
-  if (action === WAIT) {
-    return;
-  }
 
   // Change pos and set rotation
   if (keyMapping[38] || keyMapping[87] || action == N || action == NE || action == NW) {
@@ -797,21 +787,21 @@ function clamp(x, min, max) {
   return (x - min)/(max - min);
 }
 
-function fNearestBubbleX(bubble) {
-  return (bubble !== null && bubble !== undefined) ? Math.round(100*clamp(flatz.x-bubble.x, -2, 2))/100 : 1;
-}
+// function fNearestBubbleX(bubble) {
+//   return (bubble !== null && bubble !== undefined) ? Math.round(100*clamp(flatz.x-bubble.x, -2, 2))/100 : 1;
+// }
 
-function fNearestBubbleY(bubble) {
-  return (bubble !== null && bubble !== undefined) ? Math.round(100*clamp(flatz.y-bubble.y, -2, 2))/100 : 1;
-}
+// function fNearestBubbleY(bubble) {
+//   return (bubble !== null && bubble !== undefined) ? Math.round(100*clamp(flatz.y-bubble.y, -2, 2))/100 : 1;
+// }
 
-function fNearestWallX(wall) {
-  return (wall !== null && wall !== undefined) ? Math.round(100*clamp(flatz.x-wall.x, -2, 2))/100 : 1;
-}
+// function fNearestWallX(wall) {
+//   return (wall !== null && wall !== undefined) ? Math.round(100*clamp(flatz.x-wall.x, -2, 2))/100 : 1;
+// }
 
-function fNearestWallY(wall) {
-  return (wall !== null && wall !== undefined) ? Math.round(100*clamp(flatz.y-wall.y, -2, 2))/100 : 1;
-}
+// function fNearestWallY(wall) {
+//   return (wall !== null && wall !== undefined) ? Math.round(100*clamp(flatz.y-wall.y, -2, 2))/100 : 1;
+// }
 
 function bubbleInRadius(bubble) {
   // Checks to see if Flatz has collided with the bomb
@@ -845,13 +835,78 @@ function dangerBlockInRadius(dangerBlock) {
   return false;
 }
 
-function fNearestBubbleBombX() {
-    return (bubbleBomb !== null) ? Math.round(100*clamp(flatz.x-bubbleBomb.x, -2, 2))/100 : 1;
+function fNearestBubbleBombDegree(bomb) {
+  if (bomb === null || bomb === undefined) {
+    return -1;
+  }
+  // Up, left, down, right
+  // 0.0, 0.25, 0.5, 0.75
+
+  var dX = (flatz.x - bomb.x), dY = (flatz.y - bomb.y);
+  var angle = (360 + ((180/Math.PI)*(Math.atan2(dY,dX)))) % 360;
+  var min = Math.min(Math.abs(angle), Math.abs(angle-90), Math.abs(angle-180), Math.abs(angle-270));
+  if (Math.abs(angle) === min) {
+    return 0;
+  } else if (Math.abs(angle-90) === min) {
+    return 0.25;
+  } else if (Math.abs(angle-180) === min) {
+    return 0.5;
+  } else if (Math.abs(angle-270) === min) {
+    return 0.75;
+  }
+  return -1;
 }
 
-function fNearestBubbleBombY() {
-    return (bubbleBomb !== null) ? Math.round(100*clamp(flatz.y-bubbleBomb.y, -2, 2))/100 : 1;
+function fNearestBubbleDegree(bubble) {
+  if (bubble === null || bubble === undefined) {
+    return -1;
+  }
+  // Up, left, down, right
+  // 0.0, 0.25, 0.5, 0.75
+  var dX = (flatz.x - bubble.x), dY = (flatz.y - bubble.y);
+  var angle = (360 + ((180/Math.PI)*(Math.atan2(dY,dX)))) % 360;
+  var min = Math.min(Math.abs(angle), Math.abs(angle-90), Math.abs(angle-180), Math.abs(angle-270));
+  if (Math.abs(angle) === min) {
+    return 0;
+  } else if (Math.abs(angle-90) === min) {
+    return 0.25;
+  } else if (Math.abs(angle-180) === min) {
+    return 0.5;
+  } else if (Math.abs(angle-270) === min) {
+    return 0.75;
+  }
+  return -1;
 }
+
+function fNearestWallDegree(wall) {
+  if (wall === null) {
+    return -1;
+  }
+  // Up, left, down, right
+  // 0.0, 0.25, 0.5, 0.75
+
+  var dX = (flatz.x - wall.x), dY = (flatz.y - wall.y);
+  var angle = (360 + ((180/Math.PI)*(Math.atan2(dY,dX)))) % 360;
+  var min = Math.min(Math.abs(angle), Math.abs(angle-90), Math.abs(angle-180), Math.abs(angle-270));
+  if (Math.abs(angle) === min) {
+    return 0;
+  } else if (Math.abs(angle-90) === min) {
+    return 0.25;
+  } else if (Math.abs(angle-180) === min) {
+    return 0.5;
+  } else if (Math.abs(angle-270) === min) {
+    return 0.75;
+  }
+  return -1;
+}
+
+// function fNearestBubbleBombX() {
+//     return (bubbleBomb !== null) ? Math.round(100*clamp(flatz.x-bubbleBomb.x, -2, 2))/100 : 1;
+// }
+
+// function fNearestBubbleBombY() {
+//     return (bubbleBomb !== null) ? Math.round(100*clamp(flatz.y-bubbleBomb.y, -2, 2))/100 : 1;
+// }
 
 function fBubbleDensity() {
     var bubbleCount = 0;
