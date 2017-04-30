@@ -839,20 +839,28 @@ function fNearestBubbleBombDegree(bomb) {
   if (bomb === null || bomb === undefined) {
     return -1;
   }
-  // Up, left, down, right
-  // 0.0, 0.25, 0.5, 0.75
+  // U, ul, l, ld, d, rd, r, ur
+  // 0.0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875
 
   var dX = (flatz.x - bomb.x), dY = (flatz.y - bomb.y);
   var angle = (360 + ((180/Math.PI)*(Math.atan2(dY,dX)))) % 360;
   var min = Math.min(Math.abs(angle), Math.abs(angle-90), Math.abs(angle-180), Math.abs(angle-270));
   if (Math.abs(angle) === min) {
     return 0;
+  } else if (Math.abs(angle-45) === min) {
+    return 0.125;
   } else if (Math.abs(angle-90) === min) {
     return 0.25;
+  } else if (Math.abs(angle-135) === min) {
+    return 0.375;
   } else if (Math.abs(angle-180) === min) {
     return 0.5;
+  } else if (Math.abs(angle-225) === min) {
+    return 0.625;
   } else if (Math.abs(angle-270) === min) {
     return 0.75;
+  } else if (Math.abs(angle-315) === min) {
+    return 0.875;
   }
   return -1;
 }
@@ -868,12 +876,20 @@ function fNearestBubbleDegree(bubble) {
   var min = Math.min(Math.abs(angle), Math.abs(angle-90), Math.abs(angle-180), Math.abs(angle-270));
   if (Math.abs(angle) === min) {
     return 0;
+  } else if (Math.abs(angle-45) === min) {
+    return 0.125;
   } else if (Math.abs(angle-90) === min) {
     return 0.25;
+  } else if (Math.abs(angle-135) === min) {
+    return 0.375;
   } else if (Math.abs(angle-180) === min) {
     return 0.5;
+  } else if (Math.abs(angle-225) === min) {
+    return 0.625;
   } else if (Math.abs(angle-270) === min) {
     return 0.75;
+  } else if (Math.abs(angle-315) === min) {
+    return 0.875;
   }
   return -1;
 }
@@ -890,12 +906,20 @@ function fNearestWallDegree(wall) {
   var min = Math.min(Math.abs(angle), Math.abs(angle-90), Math.abs(angle-180), Math.abs(angle-270));
   if (Math.abs(angle) === min) {
     return 0;
+  } else if (Math.abs(angle-45) === min) {
+    return 0.125;
   } else if (Math.abs(angle-90) === min) {
     return 0.25;
+  } else if (Math.abs(angle-135) === min) {
+    return 0.375;
   } else if (Math.abs(angle-180) === min) {
     return 0.5;
+  } else if (Math.abs(angle-225) === min) {
+    return 0.625;
   } else if (Math.abs(angle-270) === min) {
     return 0.75;
+  } else if (Math.abs(angle-315) === min) {
+    return 0.875;
   }
   return -1;
 }
