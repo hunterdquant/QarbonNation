@@ -46,6 +46,8 @@ var popped;
 // Game music
 var song;
 
+// Index is the action taken.
+// Linear search through action rather than all state.
 var qvals = [[],[],[],[],[],[],[],[],[]];
 
 var qval = {
@@ -66,7 +68,10 @@ var state = {
   wallDensity: null
 };
 
-var iterationPerEpisode = 10000;
+var bubbleRadius = 0.2;
+var wallRadius = 0.4;
+
+var iterationPerEpisode = 3600;
 var trainingIteration = 0;
 var episode = 1;
 
@@ -219,11 +224,6 @@ function qlearn() {
   }
   
   var reward = takeAction(choice.state, choice.action);
-  if (reward > 1) {
-    reward = 1;
-  } else if (reward < -1) {
-    reward = -1;
-  }
   var val = 0;
   val += fweights[0]*choice.state.nearestBubbleBombX;
   val += fweights[1]*choice.state.nearestBubbleBombY;
@@ -284,7 +284,8 @@ function chooseAction(state, action) {
   if (rand < exploreProb) {
     return {
       state: null,
-      action: getRandomAction()
+      action: getRandomAction(),
+      val: 0
     };
   } else {
     var qmax = 0;
@@ -301,7 +302,8 @@ function chooseAction(state, action) {
   }
   return {
     state: null,
-    action: getRandomAction()
+    action: getRandomAction(),
+    val: 0
   };
 }
 
@@ -381,7 +383,7 @@ function handleBubbleCollision(bubble) {
     pop.volume = 10*bubble.getArea();
     pop.play();
     popped++;
-    return 0.1;
+    return 0.5;
   }
 
   // Check if the bubble is in the blast radius of the bomb if one is exploding
@@ -393,7 +395,7 @@ function handleBubbleCollision(bubble) {
       pop.volume = 10*bubble.getArea();
       pop.play();
       popped++;
-      return 0.1;
+      return 0.5;
     }
   }
   return 0;
@@ -406,7 +408,7 @@ function handleBubbleBombCollision() {
     // Mark the bomb as exploding
     bubbleBomb.exploding = true;
     new Audio("audio/Beep 2-SoundBible.com-1798581971.mp3").play();
-    return 3;
+    return 10;
   }
   return 0;
 }
@@ -782,7 +784,7 @@ function getNearestBubble() {
     var nearestBubbleDist = null;
     var nearestBubble = null;
     for (i = bubbles.length - 1; i >= 0; i--) {
-      var n = norm(flatz.x, bubbles[i].x, flatz.y, bubbles[i].y);
+      var n = normSquared(flatz.x, bubbles[i].x, flatz.y, bubbles[i].y);
       if (nearestBubbleDist === null ||  n < nearestBubbleDist) {
         nearestBubbleDist = n;
         nearestBubble = bubbles[i];
@@ -791,25 +793,29 @@ function getNearestBubble() {
     return nearestBubble;
 }
 
+function clamp(x, min, max) {
+  return (x - min)/(max - min);
+}
+
 function fNearestBubbleX(bubble) {
-  return (bubble !== null && bubble !== undefined) ? Math.round(100*(flatz.x-bubble.x))/100/4 : 1;
+  return (bubble !== null && bubble !== undefined) ? Math.round(100*clamp(flatz.x-bubble.x, -2, 2))/100 : 1;
 }
 
 function fNearestBubbleY(bubble) {
-  return (bubble !== null && bubble !== undefined) ? Math.round(100*(flatz.y-bubble.y))/100/4 : 1;
+  return (bubble !== null && bubble !== undefined) ? Math.round(100*clamp(flatz.y-bubble.y, -2, 2))/100 : 1;
 }
 
 function fNearestWallX(wall) {
-  return (wall !== null && wall !== undefined) ? Math.round(100*(flatz.x-wall.x))/100/4 : 1;
+  return (wall !== null && wall !== undefined) ? Math.round(100*clamp(flatz.x-wall.x, -2, 2))/100 : 1;
 }
 
 function fNearestWallY(wall) {
-  return (wall !== null && wall !== undefined) ? Math.round(100*(flatz.y-wall.y))/100/4 : 1;
+  return (wall !== null && wall !== undefined) ? Math.round(100*clamp(flatz.y-wall.y, -2, 2))/100 : 1;
 }
 
 function bubbleInRadius(bubble) {
   // Checks to see if Flatz has collided with the bomb
-  if (!bubble.popped && Math.abs(bubble.x - flatz.x) <= bubble.radius + 0.2 + 0.05 && Math.abs(bubble.y - flatz.y) <= bubble.radius + 0.2 + 0.016) {
+  if (!bubble.popped && Math.abs(bubble.x - flatz.x) <= bubble.radius + bubbleRadius + 0.05 && Math.abs(bubble.y - flatz.y) <= bubble.radius + bubbleRadius + 0.016) {
     return true;
   }
   return false;
@@ -819,7 +825,7 @@ function getNearestWall() {
     var nearestWallDist = null;
     var nearestWall = null;
     for (i = dangerBlocks.length - 1; i >= 0; i--) {
-      var n = norm(flatz.x, dangerBlocks[i].x, flatz.y, dangerBlocks[i].y);
+      var n = normSquared(flatz.x, dangerBlocks[i].x, flatz.y, dangerBlocks[i].y);
       if (nearestWallDist === null || n < nearestWallDist) {
         nearestWallDist = n;
         nearestWall = dangerBlocks[i];
@@ -828,23 +834,23 @@ function getNearestWall() {
     return nearestWall;
 }
 
-function norm(x1, x2, y1, y2) {
+function normSquared(x1, x2, y1, y2) {
   return Math.abs(Math.exp(x1 - x2, 2) + Math.exp(y1 - y2, 2));
 }
 
 function dangerBlockInRadius(dangerBlock) {
-  if (Math.abs(dangerBlock.x - flatz.x) < 0.4 + .125 && Math.abs(dangerBlock.y +  - flatz.y) < 0.4 + .225) {
+  if (Math.abs(dangerBlock.x - flatz.x) < wallRadius + .125 && Math.abs(dangerBlock.y +  - flatz.y) < wallRadius + .225) {
     return true;
   }
   return false;
 }
 
 function fNearestBubbleBombX() {
-    return (bubbleBomb !== null) ? Math.round(100*(flatz.x-bubbleBomb.x))/100/4 : 1;
+    return (bubbleBomb !== null) ? Math.round(100*clamp(flatz.x-bubbleBomb.x, -2, 2))/100 : 1;
 }
 
 function fNearestBubbleBombY() {
-    return (bubbleBomb !== null) ? Math.round(100*(flatz.y-bubbleBomb.y))/100/4 : 1;
+    return (bubbleBomb !== null) ? Math.round(100*clamp(flatz.y-bubbleBomb.y, -2, 2))/100 : 1;
 }
 
 function fBubbleDensity() {
@@ -854,7 +860,11 @@ function fBubbleDensity() {
         bubbleCount++;
       }
     }
-    return bubbleCount/100;
+    // Limit and Normalize data
+    if (bubbleCount > 10) {
+      bubbleCount = 10;
+    }
+    return clamp(bubbleCount, 0, 10);
 }
 
 function fWallDensity() {
@@ -864,9 +874,14 @@ function fWallDensity() {
         wallCount++;
       }
     }
-    return wallCount/10;
+    // Limit and Normalize data
+    if (wallCount > 10) {
+      wallCount = 10;
+    }
+    return clamp(wallCount, 0, 10);
 }
 
 function fNearestSide() {
-  return (100*Math.min(Math.abs(flatz.x - -1), Math.abs(flatz.x - 1)))/100;
+  // X distance from each side (-1 and 1)
+  return Math.round(100*clamp(Math.min(Math.abs(flatz.x + 1), Math.abs(flatz.x - 1)), 0, 2))/100;
 }
