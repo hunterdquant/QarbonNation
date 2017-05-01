@@ -226,12 +226,12 @@ function qlearn() {
     nearestSide: fNearestSide(),
     bubbleDensity: fBubbleDensity()
   };
+
   var choice = chooseAction(state);
   if (choice.state === null) {
     choice.state = state;
     qvals[choice.action].push(choice);
   }
-  
   var reward = takeAction(choice.state, choice.action);
   var val = 0;
   val += fweights[0]*choice.state.nearestBubbleBombDegree;
@@ -260,11 +260,11 @@ function qlearn() {
 }
 
 function getCorrection(state, reward, val) {
-  var qmax = 0;
+  var qmax = null;
   var qval = null;
   for (var i = 0; i < actionCount; i++) {
     tmpq = findQ(state, i);
-    if (tmpq !== null && tmpq.val !== null && tmpq.val > qmax) {
+    if ((tmpq !== null && tmpq.val >= qmax) || tmpq !== null && qmax === null) {
       qval = tmpq;
       qmax = qval.val;
     }
@@ -275,20 +275,25 @@ function getCorrection(state, reward, val) {
   return reward - val;
 }
 
-function chooseAction(state, action) {
+function chooseAction(state) {
   var qval = null;
   var rand = Math.random();
   if (rand < exploreProb) {
+    var a = getRandomAction();
+    var tmpq = findQ(state, a);
+    if (tmpq !== null) {
+      return tmpq;
+    }
     return {
       state: null,
-      action: getRandomAction(),
+      action: a,
       val: 0
     };
   } else {
-    var qmax = 0;
+    var qmax = null;
     for (var i = 0; i < actionCount; i++) {
-      tmpq = findQ(state, i);
-      if (tmpq !== null && tmpq.val !== null && tmpq.val > qmax) {
+      var tmpq = findQ(state, i);
+      if ((tmpq !== null && tmpq.val >= qmax) || (tmpq !== null && qmax === null)) {
         qval = tmpq;
         qmax = qval.val;
       }
@@ -297,9 +302,14 @@ function chooseAction(state, action) {
       return qval;
     }
   }
+  var a = getRandomAction();
+  var tmpq = findQ(state, a);
+  if (tmpq !== null) {
+    return tmpq;
+  }
   return {
     state: null,
-    action: getRandomAction(),
+    action: a,
     val: 0
   };
 }
