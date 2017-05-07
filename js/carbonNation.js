@@ -192,7 +192,7 @@ function gameLoop() {
   } else {
     episode++;
     if (episode%10 == 0) {
-      exploreProb /= 2;
+      exploreProb *= (4/5);
     }
     startNew();
   }
@@ -217,6 +217,8 @@ function startNew() {
 }
 
 function qlearn() {
+
+  // Construct current state.
   var bub = getNearestBubble();
   var wall = getNearestWall();
   var state = {
@@ -227,12 +229,17 @@ function qlearn() {
     bubbleDensity: fBubbleDensity()
   };
 
+  // Choose an action.
   var choice = chooseAction(state);
   if (choice.state === null) {
     choice.state = state;
     qvals[choice.action].push(choice);
   }
+
+  // Take action and observe the reward.
   var reward = takeAction(choice.state, choice.action);
+
+  // Calculate the new qval
   var val = 0;
   val += fweights[0]*choice.state.nearestBubbleBombDegree;
   val += fweights[1]*choice.state.nearestBubbleDegree;
@@ -241,6 +248,7 @@ function qlearn() {
   val += fweights[4]*choice.state.bubbleDensity;
   choice.val = val;
 
+  // Construct the new state.
   bub = getNearestBubble();
   wall = getNearestWall();
   var newState = {
@@ -251,6 +259,7 @@ function qlearn() {
     bubbleDensity: fBubbleDensity()
   };
 
+  // Update the feature weights using gradient descent.
   var correction = getCorrection(newState, reward, val);
   fweights[0] = fweights[0] + learningRate*correction*newState.nearestBubbleBombDegree;
   fweights[1] = fweights[1] + learningRate*correction*newState.nearestBubbleDegree;
@@ -259,6 +268,7 @@ function qlearn() {
   fweights[4] = fweights[4] + learningRate*correction*newState.bubbleDensity;
 }
 
+// Returns the contribution of to the current reward difference.
 function getCorrection(state, reward, val) {
   var qmax = null;
   var qval = null;
@@ -275,6 +285,8 @@ function getCorrection(state, reward, val) {
   return reward - val;
 }
 
+// Chooses an exploration action with probability <exploreProb>
+// Otherwise it will lookup the best qval for the given state.
 function chooseAction(state) {
   var qval = null;
   var rand = Math.random();
@@ -411,7 +423,7 @@ function handleBubbleBombCollision() {
     // Mark the bomb as exploding
     bubbleBomb.exploding = true;
     new Audio("audio/Beep 2-SoundBible.com-1798581971.mp3").play();
-    return 10;
+    return 1000;
   }
   return 0;
 }
@@ -420,7 +432,7 @@ function handleDangerBlockCollision(dangerBlock) {
   if (Math.abs(dangerBlock.x - flatz.x) < .125 && Math.abs(dangerBlock.y - flatz.y) < .225) {
     score -= 1000;
     dangerBlock.hit = true;
-    return -10;
+    return -1000000;
   }
   return 0;
 }
